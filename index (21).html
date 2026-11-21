@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; media-src * blob: data:; connect-src * blob: data:; worker-src * blob:;">
+<title>HIT CHANSON TV</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HIT CHANSON TV">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;600;700&family=Cormorant+Garamond:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="apple-touch-icon" href="https://storage.e.jimdo.com/cdn-cgi/image/quality=85,fit=scale-down,format=auto,trim=0;0;0;0,width=800,height=800/image/545093144/951e7817-2005-4835-ace4-ca3170cdb9be.jpg">
+<link rel="icon" type="image/jpg" href="https://storage.e.jimdo.com/cdn-cgi/image/quality=85,fit=scale-down,format=auto,trim=0;0;0;0,width=800,height=800/image/545093144/951e7817-2005-4835-ace4-ca3170cdb9be.jpg">
+<style>
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: 'Oswald', Arial, sans-serif; }
+
+/* ── PLAYER — remplit le tvFrame en 16/9 ── */
+/* .pv = toutes les vidéos (active + clips préchargés cachés) */
+.pv {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
+  background: #000; object-fit: contain;
+  opacity: 0; pointer-events: none;
+}
+.pv.pv-active { opacity: 1; pointer-events: auto; }
+
+/* ── TVFRAME — zone 16/9 centrée pour les overlays ── */
+#tvFrame {
+  --u: calc(min(100vw, 100vh * 16 / 9) / 2080);   /* 1 px de la photo 2080×1170 */
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* ── ENCADRÉ D'INFOS (texte à l'écran) ── */
+#infoBox {
+  --b: calc(var(--u) * 5);            /* épaisseur du trait */
+  --n: calc(var(--u) * 34);           /* taille de l'encoche */
+  --h: calc(var(--n) * 0.7071);       /* demi-largeur de l'encoche */
+  --nx: 85%;                          /* position de l'encoche */
+  position: absolute;
+  left: 25.5%; width: 50.5%;
+  bottom: 14%;
+  padding: calc(var(--u) * 26) calc(var(--u) * 34);
+  border: var(--b) solid #fff; border-top: none;
+  color: #fff;
+  font-family: 'Oswald', Arial, sans-serif; font-weight: 600;
+  font-size: calc(var(--u) * 40); line-height: 1.3;
+  text-shadow: 0 0 calc(var(--u) * 8) rgba(0,0,0,.55);
+  opacity: 0; transition: opacity .5s ease;
+}
+#infoBox.show { opacity: 1; }
+#infoBox::before, #infoBox::after {
+  content: ''; position: absolute; top: 0; height: var(--b); background: #fff;
+}
+#infoBox::before { left: calc(var(--b) * -1); width: calc(var(--nx) - var(--h) + var(--b)); }
+#infoBox::after  { left: calc(var(--nx) + var(--h)); right: calc(var(--b) * -1); }
+#infoNotch {
+  position: absolute; top: calc(var(--n) / -2); left: calc(var(--nx) - var(--n) / 2);
+  width: var(--n); height: var(--n); box-sizing: border-box;
+  border-right: var(--b) solid #fff; border-bottom: var(--b) solid #fff;
+  transform: rotate(45deg);
+}
+
+/* ── TITRE DU CLIP (serif élégant, lettres espacées, centré en bas) ── */
+#titleBox {
+  position: absolute; left: 50%; bottom: 11%;
+  transform: translateX(-50%);
+  width: 56%; color: #fff; text-align: center;
+  font-family: 'Cormorant Garamond', 'EB Garamond', Georgia, 'Times New Roman', serif;
+  text-transform: uppercase;
+  text-shadow: 0 0 calc(var(--u) * 12) rgba(0,0,0,.55);
+  opacity: 0; transition: opacity .6s ease;
+}
+#titleBox.show { opacity: 1; }
+#titleMain {
+  font-weight: 600; font-size: calc(var(--u) * 66);
+  letter-spacing: .3em; margin-right: -.3em;   /* recentre malgré l'espacement final */
+  line-height: 1.28; text-wrap: balance;
+}
+
+/* ── GÉNÉRIQUE D'OUVERTURE (0 → 6 s sur Don't Stop) ── */
+#intro {
+  position: absolute; inset: 0; z-index: 15;
+  display: none; align-items: center; justify-content: center;
+  background: #000; opacity: 1;
+  transition: opacity 1.6s cubic-bezier(.25,.1,.25,1);
+}
+#intro.on { display: flex; }
+#intro.reveal { opacity: 0; }
+#introGroup {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  transform: translateY(calc(var(--u) * 12));
+  transition: transform .85s cubic-bezier(.22,1,.36,1), opacity .6s ease;
+}
+#introGroup.up { transform: translateY(calc(var(--u) * -6)); }
+#introGroup.out { opacity: 0; }
+#introMain {
+  font-family: 'Cormorant Garamond', 'EB Garamond', Georgia, 'Times New Roman', serif; font-weight: 600; color: #fff;
+  font-size: calc(var(--u) * 100); letter-spacing: .48em; margin-right: -.48em;
+  line-height: 1.15; white-space: nowrap; display: flex; justify-content: center;
+}
+#introSub {
+  font-family: 'Cormorant Garamond', 'EB Garamond', Georgia, 'Times New Roman', serif; font-weight: 600; color: #e5e5e5;
+  font-size: calc(var(--u) * 27); letter-spacing: .44em; margin-right: -.44em;
+  margin-top: calc(var(--u) * 20); line-height: 1.3; white-space: nowrap;
+  display: flex; justify-content: center;
+}
+#intro .ch {
+  display: inline-block; opacity: 0; filter: brightness(.4);
+  transition: opacity .65s cubic-bezier(.25,.46,.45,.94), filter .65s cubic-bezier(.25,.46,.45,.94);
+}
+#intro .ch.sp { width: .55em; }
+#intro .ch.rev { opacity: 1; filter: brightness(1); text-shadow: 0 0 18px rgba(255,255,255,.14); }
+#intro .ch.dis { opacity: .18; filter: brightness(.65); text-shadow: 0 2px 10px rgba(0,0,0,.8);
+  transition: opacity 1.35s cubic-bezier(.4,0,.2,1), filter 1.35s cubic-bezier(.4,0,.2,1); }
+#intro .ch.dis2 { opacity: .72; filter: brightness(.95); text-shadow: 0 2px 12px rgba(0,0,0,.85);
+  transition: opacity 1.35s cubic-bezier(.4,0,.2,1), filter 1.35s cubic-bezier(.4,0,.2,1); }
+
+/* ── INVITE « TOUCHER POUR LANCER » (uniquement si le navigateur bloque le son) ── */
+#tapPrompt {
+  position: absolute; left: 50%; bottom: 7%; transform: translateX(-50%);
+  z-index: 30; color: #fff; white-space: nowrap;
+  font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; text-transform: uppercase;
+  font-size: calc(var(--u) * 30); letter-spacing: .3em; margin-right: -.3em;
+  text-shadow: 0 0 calc(var(--u) * 10) rgba(0,0,0,.7);
+  opacity: 0; transition: opacity .4s ease; pointer-events: none;
+}
+#tapPrompt.show { opacity: 1; animation: tapPulse 1.8s ease-in-out infinite; }
+@keyframes tapPulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* ── CONTROLS ── */
+#controls {
+  position: absolute;
+  left: 20px;
+  top: max(20px, env(safe-area-inset-top));
+  display: flex; gap: 10px; z-index: 20;
+  transition: opacity 0.4s ease;
+  pointer-events: all;
+}
+body.controls-hidden #controls { opacity: 0; pointer-events: none; }
+
+button {
+  background: rgba(255,255,255,0.12); color: white;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px; padding: 8px 12px; font-size: 15px;
+  cursor: pointer; -webkit-appearance: none; touch-action: manipulation;
+  font-family: 'Oswald', Arial, sans-serif;
+}
+
+/* ── SEARCH ── */
+#searchWrapper { position: relative; }
+#searchInput {
+  background: rgba(0,0,0,0.6); color: white;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px; padding: 6px 12px; font-size: 15px;
+  width: 220px; outline: none; -webkit-appearance: none;
+  font-family: 'Oswald', Arial, sans-serif;
+}
+#searchInput::placeholder { color: rgba(255,255,255,0.45); }
+#searchResults {
+  position: absolute; top: 110%; left: 0; width: 100%; max-height: 50vh;
+  overflow-y: auto; background: rgba(0,0,0,0.95);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px; z-index: 100; display: none;
+  -webkit-overflow-scrolling: touch;
+}
+#searchResults div {
+  padding: 12px 14px; font-size: 14px; color: #fff; cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  touch-action: manipulation;
+  font-family: 'Oswald', Arial, sans-serif;
+}
+#searchResults div:active { background: rgba(255,45,45,0.35); }
+#searchResults div span { color: rgba(255,255,255,0.5); font-size: 12px; }
+
+</style>
+</head>
+<body>
+
+<div id="tvFrame">
+<div id="controls">
+  <button id="fullscreenBtn">&#9638; Plein &#233;cran</button>
+  <div id="searchWrapper">
+    <input type="text" id="searchInput" placeholder="&#128269; Rechercher un titre..." autocomplete="off" />
+    <div id="searchResults"></div>
+  </div>
+</div>
+
+<div id="titleBox"><div id="titleMain"></div></div>
+<div id="infoBox"><span id="infoNotch"></span><span id="infoText"></span></div>
+
+<div id="intro"><div id="introGroup"><h1 id="introMain"></h1><p id="introSub"></p></div></div>
+
+<div id="tapPrompt">&#9654;&ensp;Toucher l’écran pour lancer</div>
+
+</div><!-- /#tvFrame -->
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script>
+
+/* ══════════════════════════════════════
+   PLAYLIST
+══════════════════════════════════════ */
+const playlistSource = [
+ {"url": "https://files.catbox.moe/hnvtkw.mp4", "titre": "Don't Stop 'Til You Get Enough", "artiste": "Michael Jackson", "label": "Jivepic Sony Music", "compositeurs": "Michael Jackson, Greg Philliganes", "annee": 1979, "dezoom": true, "intro": true, "titreDe": 16, "titreA": 22, "infos": [{"de": 33, "a": 43, "texte": "Sorti le 10 juillet 1979, c’est le premier single solo de Michael après son départ de la Motown."}, {"de": 54, "a": 64, "texte": "L’album marque le début de la collaboration mythique entre Michael et le producteur Quincy Jones."}, {"de": 75, "a": 85, "texte": "C’est le tout premier véritable clip de la carrière solo de Michael."}, {"de": 102, "a": 112, "texte": "Selon Michael, c’est la première chanson qu’il a entièrement écrite et composée lui-même."}, {"de": 136, "a": 146, "texte": "Michael et son frère Randy jouent eux-mêmes sur des bouteilles en verre pour les percussions du titre."}, {"de": 157, "a": 167, "texte": "Le 13 octobre 1979, le titre devient n° 1 aux États-Unis : son deuxième n° 1 solo après Ben, en 1972."}, {"de": 182, "a": 192, "texte": "Il offre à Michael son premier Grammy en solo en 1980, pour la meilleure performance vocale R&B."}, {"de": 208, "a": 218, "texte": "Off the Wall devient le premier album solo à placer quatre singles dans le Top 10 américain."}]},
+ {"url": "https://files.catbox.moe/ukqe81.mp4", "titre": "Beat It", "artiste": "Michael Jackson", "label": "Sony Music Legacy Sony Music", "compositeurs": "Michael Jackson", "annee": 1983, "dezoom": true, "titreDe": 22, "titreA": 28, "infos": [{"de": 44, "a": 54, "texte": "Sorti le 21 février 1983, Beat It est le 3e single de Thriller."}, {"de": 73, "a": 83, "texte": "Quincy Jones voulait une chanson rock sur Thriller. Michael écrit alors Beat It."}, {"de": 104, "a": 114, "texte": "Le clip s’inspire de West Side Story, avec deux bandes rivales réconciliées par la danse."}, {"de": 137, "a": 147, "texte": "Le bar du clip apparaît aussi sur la pochette de l’album Morrison Hotel des Doors, sorti en 1970."}, {"de": 170, "a": 180, "texte": "Environ 80 membres de gangs participent au tournage, aux côtés de danseurs professionnels."}, {"de": 189, "a": 199, "texte": "Des tensions éclatent entre les gangs sur le plateau. La police envisage d’arrêter le tournage."}, {"de": 207, "a": 217, "texte": "C’est Eddie Van Halen qui joue le solo de guitare de Beat It en seulement deux prises et sans demander de cachet."}, {"de": 239, "a": 249, "texte": "Sa maison de disques CBS refuse de financer le clip : Michael paie lui-même les 150 000 dollars de budget."}, {"de": 270, "a": 280, "texte": "Beat It devient numéro 1 aux États-Unis en avril 1983, après le triomphe de Billie Jean."}]},
+ {"url": "https://stream.mux.com/7p9vXs7mjdiccwcmtQb7kl702itqIV00Zv33z01MXTF0002g.m3u8", "titre": "Thriller", "artiste": "Michael Jackson", "label": "Sony Music Legacy Sony BMG", "compositeurs": "Rod Temperton", "annee": 1983, "dezoom": true, "titreDe": 23, "titreA": 29, "infos": [{"de": 270, "a": 280, "texte": "Le clip de Thriller est réalisé par John Landis qui a connu le succès en 1980 avec Les Blues Brothers."}, {"de": 289, "a": 299, "texte": "Michael contacte John Landis après avoir adoré son film Le Loup-garou de Londres, sorti en 1981."}, {"de": 313, "a": 323, "texte": "Ola Ray, qui joue la petite amie de Michael, était mannequin et avait posé pour Playboy."}, {"de": 338, "a": 348, "texte": "Jennifer Beals, héroïne de Flashdance, avait été envisagée pour jouer la petite amie de Michael."}, {"de": 372, "a": 382, "texte": "Le clip dure près de 14 minutes et a été tourné en 35 mm, comme un véritable film de cinéma."}, {"de": 399, "a": 409, "texte": "Le budget du clip atteint environ 500 000 dollars, une somme record à l’époque."}, {"de": 434, "a": 444, "texte": "Selon John Landis, 40 maquilleurs ont travaillé sur le tournage, un record pour l’époque au cinéma."}, {"de": 456, "a": 466, "texte": "En 2009, Thriller devient le premier clip inscrit au National Film Registry américain."}, {"de": 502, "a": 512, "texte": "La célèbre chorégraphie des zombies est conçue par Michael et Michael Peters, déjà présent sur Beat It."}, {"de": 526, "a": 536, "texte": "La veste rouge est dessinée par Deborah Nadoolman, costumière du clip et épouse de John Landis."}, {"de": 544, "a": 554, "texte": "Cette même costumière avait imaginé le look d’Indiana Jones pour Les Aventuriers de l’Arche Perdue."}, {"de": 571, "a": 581, "texte": "Des milliers de fans se massent autour du tournage après la révélation des lieux à la radio."}, {"de": 593, "a": 603, "texte": "Marlon Brando, Fred Astaire et Jackie Kennedy Onassis passent sur le tournage."}, {"de": 610, "a": 620, "texte": "En 2011, la veste rouge portée par Michael dans le clip est vendue aux enchères 1,8 million de dollars."}]},
+ {"url": "https://files.catbox.moe/bsdied.mp4", "titre": "Billie Jean", "artiste": "Michael Jackson", "label": "Jivepic Sony BMG", "compositeurs": "Michael Jackson", "annee": 1982, "dezoom": true, "titreDe": 5, "titreA": 11, "infos": [{"de": 54, "a": 64, "texte": "Selon Michael, Billie Jean n’existe pas : elle est inspirée par plusieurs fans croisées en tournée avec ses frères."}, {"de": 86, "a": 96, "texte": "Quincy Jones veut rebaptiser le titre « Not My Lover », craignant une confusion avec la joueuse de tennis Billie Jean King."}, {"de": 112, "a": 122, "texte": "Quincy veut aussi couper l’intro de 29 secondes. Michael refuse : elle lui « donne envie de danser »."}, {"de": 133, "a": 143, "texte": "Le clip est réalisé par Steve Barron, qui signera deux ans plus tard celui de Take On Me pour A-ha."}, {"de": 181, "a": 191, "texte": "Bruce Swedien mixe le morceau 91 fois. C’est finalement le deuxième mixage qui est retenu."}, {"de": 211, "a": 221, "texte": "N° 1 aux États-Unis le 5 mars 1983, il y reste sept semaines : le plus grand succès solo de Michael."}, {"de": 232, "a": 242, "texte": "Avec environ 18 millions d’exemplaires vendus dans le monde, c’est le single le plus vendu de Michael."}, {"de": 263, "a": 273, "texte": "Lors de l’émission célébrant les 25 ans de la Motown en 1983, MJ dévoile son moonwalk en interprétant Billie Jean."}]},
+ {"url": "https://files.catbox.moe/got78z.mp4", "titre": "Human Nature", "artiste": "Michael Jackson", "label": "Jivepic Sony BMG", "compositeurs": "John Bettis, Steve Porcaro", "annee": 1983, "titreDe": 6, "titreA": 12, "infos": [{"de": 32, "a": 42, "texte": "Human Nature sort en single en juillet 1983. Michael a alors 24 ans et triomphe avec Thriller."}, {"de": 57, "a": 67, "texte": "La chanson est composée par Steve Porcaro, claviériste du célèbre groupe américain Toto."}, {"de": 86, "a": 96, "texte": "L’idée de la chanson lui est venue après que sa fille ait été poussée du haut d’un toboggan par un garçon."}, {"de": 103, "a": 113, "texte": "Pour la consoler, il lui explique que les gens sont parfois étranges : « c’est la nature humaine »."}, {"de": 121, "a": 131, "texte": "Steve Porcaro enregistre sa démo pendant que son groupe Toto mixe son futur tube mondial, Africa."}, {"de": 145, "a": 155, "texte": "Le groupe Toto se voit proposer la chanson mais la refuse : il préfère les morceaux plus rock."}, {"de": 175, "a": 185, "texte": "La voix de Michael est enregistrée en une seule prise, sans aucun montage ni aucune correction."}, {"de": 203, "a": 213, "texte": "Quatre membres de Toto jouent sur le titre : Steve et Jeff Porcaro, David Paich et Steve Lukather."}]},
+ {"url": "https://files.catbox.moe/93w7mk.mp4", "titre": "Bad", "artiste": "Michael Jackson", "label": "Jivepic Sony BMG", "compositeurs": "Michael Jackson", "annee": 1987, "dezoom": true, "titreDe": 3, "titreA": 9, "infos": [{"de": 18, "a": 28, "texte": "Le clip de Bad est réalisé par Martin Scorsese, qui avait déjà connu le succès avec Taxi Driver et Raging Bull."}, {"de": 34, "a": 44, "texte": "Wesley Snipes, futur héros de Blade, est encore un acteur inconnu lorsqu’il tourne Bad."}, {"de": 56, "a": 66, "texte": "À l’origine, Michael voulait enregistrer Bad en duo avec Prince, son grand rival des années 80."}, {"de": 74, "a": 84, "texte": "Prince aurait refusé le duo après avoir découvert les paroles provocatrices de la chanson."}, {"de": 100, "a": 110, "texte": "Le clip s’inspire d’Edmund Perry, brillant étudiant de Harlem tué par un policier en 1985."}, {"de": 122, "a": 132, "texte": "Dans sa version longue, le clip est un véritable court-métrage de 18 minutes."}, {"de": 144, "a": 154, "texte": "Scorsese a consacré environ deux semaines et demie au tournage des séquences dansées."}, {"de": 168, "a": 178, "texte": "La célèbre chorégraphie est tournée dans la station de métro Hoyt-Schermerhorn, à Brooklyn."}, {"de": 186, "a": 196, "texte": "Le film complet de Martin Scorsese a coûté plus de deux millions de dollars à Epic."}, {"de": 203, "a": 213, "texte": "Bad sort en 1987, quatre ans après Thriller, l’album qui a fait de Michael une superstar mondiale."}, {"de": 220, "a": 230, "texte": "Bad atteint la première place du Billboard Hot 100 américain en octobre 1987."}, {"de": 237, "a": 247, "texte": "L’album Bad devient le premier de l’histoire à produire cinq singles n° 1 aux États-Unis."}]},
+ {"url": "https://files.catbox.moe/v9zk43.mp4", "titre": "Say Say Say", "artiste": "Michael Jackson feat. Paul McCartney", "label": "Jivepic Sony BMG", "compositeurs": "Michael Jackson, Paul McCartney", "annee": 1983, "dezoom": true, "titreDe": 60, "titreA": 66, "infos": [{"de": 74, "a": 84, "texte": "Le titre est produit par Georges Martin, le producteur historique de tous les albums des Beatles."}, {"de": 98, "a": 108, "texte": "Say Say Say figure sur Pipes of Peace, l’album solo de Paul McCartney sorti en 1983."}, {"de": 130, "a": 140, "texte": "Le tournage se déroule en octobre 1983, dans la petite ville de Los Alamos, en Californie."}, {"de": 157, "a": 167, "texte": "Pendant le tournage, les McCartney logent au Sycamore Valley Ranch près de Los Olivos, en Californie."}, {"de": 181, "a": 191, "texte": "Cinq ans plus tard, en 1988, Michael rachète ce ranch et le rebaptise d’un nom resté célèbre : Neverland."}, {"de": 198, "a": 208, "texte": "La jeune femme que Michael tente de séduire dans le clip est sa propre sœur, La Toya Jackson !"}, {"de": 229, "a": 239, "texte": "Paul McCartney était intimidé à l’idée de devoir danser aux côtés de Michael."}, {"de": 271, "a": 281, "texte": "C’est le 7e top 10 de Michael en 1983, un record jusque-là partagé par les Beatles et Elvis Presley."}]},
+ {"url": "https://files.catbox.moe/sjdwyi.mp4", "titre": "We Are The World", "artiste": "USA For Africa", "label": "Columbia Sony BMG", "compositeurs": "Michael Jackson, Lionel Richie", "annee": 1985, "dezoom": true, "titreDe": 25, "titreA": 31, "infos": [{"de": 66, "a": 76, "texte": "Le 28 janvier 1985, 15 stars se réunissent à Los Angeles pour enregistrer We Are the World."}, {"de": 120, "a": 130, "texte": "L’enregistrement a lieu juste après les American Music Awards, pour réunir un maximum de stars."}, {"de": 160, "a": 170, "texte": "La chanson est écrite et composée par Michael et Lionel Richie, et produite par Quincy Jones."}, {"de": 188, "a": 198, "texte": "Les artistes enregistrent toute la nuit. Les dernières prises s’achèvent au petit matin."}, {"de": 210, "a": 220, "texte": "À l’entrée du studio, Quincy Jones fait afficher : « Laissez vos egos à la porte ! »"}, {"de": 227, "a": 237, "texte": "Bob Dylan, intimidé par les autres stars, peine à trouver sa voix lors de son solo."}, {"de": 253, "a": 263, "texte": "Prince ne vient pas à la session, mais offre à l’album un titre inédit : 4 the Tears in Your Eyes."}, {"de": 288, "a": 298, "texte": "Aux États-Unis, les 800 000 premiers exemplaires du single s’écoulent en seulement trois jours."}, {"de": 311, "a": 321, "texte": "Stevie Wonder plaisante : si ce n’est pas fini en une prise, lui et Ray Charles ramèneront tout le monde."}, {"de": 336, "a": 346, "texte": "Le 5 avril 1985, plus de 8 000 stations de radio diffusent la chanson exactement au même moment."}, {"de": 368, "a": 378, "texte": "Avec plus de 20 millions d’exemplaires, c’est l’un des singles les plus vendus de l’histoire."}, {"de": 399, "a": 409, "texte": "La chanson remporte quatre Grammys en 1986, dont l’enregistrement de la chanson de l’année."}]},
+ {"url": "https://files.catbox.moe/mccs0q.mp4", "titre": "The Way You Make Me Feel", "artiste": "Michael Jackson", "label": "Jivepic Sony Music", "compositeurs": "Michael Jackson", "annee": 1987, "dezoom": true, "titreDe": 4, "titreA": 10, "infos": [{"de": 231, "a": 241, "texte": "Michael écrit plus de 60 chansons pour l’album Bad. Celle-ci fait partie des 11 finalement retenues."}, {"de": 253, "a": 263, "texte": "Michael rêvait d’un triple album. Quincy Jones le convainc de n’en garder qu’un seul disque."}, {"de": 277, "a": 287, "texte": "Troisième single extrait de Bad, le titre atteint la 1re place aux États-Unis le 23 janvier 1988."}, {"de": 302, "a": 312, "texte": "C’est le troisième numéro un consécutif de l’album aux États-Unis, après I Just Can’t Stop Loving You et Bad."}, {"de": 333, "a": 343, "texte": "Le clip est réalisé par Joe Pytka, célèbre publicitaire qui réalisera aussi Dirty Diana."}, {"de": 367, "a": 377, "texte": "Joe Pytka signera plus tard Space Jam, avec Michael Jordan et Bugs Bunny."}, {"de": 400, "a": 410, "texte": "La chanson s’appelait initialement Hot Fever avant de devenir The Way You Make Me Feel."}, {"de": 440, "a": 450, "texte": "En septembre 2001, Michael chante le titre en duo avec Britney Spears au Madison Square Garden."}, {"de": 483, "a": 493, "texte": "Le clip est nommé aux MTV Video Music Awards 1988, battu par celui de sa sœur Janet Jackson."}]},
+ {"url": "https://files.catbox.moe/rvca32.mp4", "titre": "Man In The Mirror", "artiste": "Michael Jackson", "label": "Jivepic Sony BMG", "compositeurs": "Siedah Garrett, Glen Ballard", "annee": 1988, "dezoom": true, "titreDe": 12, "titreA": 18, "infos": [{"de": 29, "a": 39, "texte": "En 1987, Quincy Jones demande à des auteurs une chanson porteuse d’espoir pour compléter l’album Bad."}, {"de": 50, "a": 60, "texte": "Sorti en janvier 1988, c’est le 4e single de Bad, et son 4e numéro un consécutif aux États-Unis."}, {"de": 99, "a": 109, "texte": "Man in the Mirror est écrit par Siedah Garrett et Glen Ballard, et non par Michael."}, {"de": 124, "a": 134, "texte": "À la demande de Michael, les deux auteurs rallongent le pont et modifient quelques paroles."}, {"de": 153, "a": 163, "texte": "Après la mort de Michael en 2009, le titre devient un hymne spontané lors des rassemblements d’hommage."}, {"de": 174, "a": 184, "texte": "Une version instrumentale du titre est jouée lors de la cérémonie d’hommage à Michael en 2009."}, {"de": 196, "a": 206, "texte": "On y aperçoit Martin Luther King, Gandhi, Nelson Mandela et Mère Teresa."}, {"de": 219, "a": 229, "texte": "Le clip oppose ces figures humanistes à des dictateurs comme Adolf Hitler."}, {"de": 252, "a": 262, "texte": "Michael parle d’un clip « réversible » : passé à l’envers, il va de l’innocence vers le chaos et la guerre."}, {"de": 279, "a": 289, "texte": "Michael n’apparaît presque pas, sauf dans un bref plan en veste rouge au milieu d’une foule."}]},
+];
+
+let playlist = playlistSource.filter(i => i.url);   // ignore les titres dont le lien est encore vide
+let player = null;   // vidéo en cours (créée à la demande, voir plus bas)
+let currentIndex = 0;
+
+
+function initPlaylist() {
+  currentIndex = 0;
+  loadVideo(currentIndex);
+}
+
+/* ══════════════════════════════════════
+   PRÉCHARGEMENT DE TOUS LES CLIPS
+   Chaque clip a sa propre <video> cachée, déjà chargée : au clic il démarre aussitôt.
+══════════════════════════════════════ */
+const PRELOAD_MAX      = 300;  // nb max de clips gardés prêts (mets 9999 pour « tous », au prix de la mémoire)
+const PRELOAD_FULL     = 30;   // les N premiers sont chargés en entier (début de vidéo), les autres en « metadata »
+const PRELOAD_PARALLEL = 2;    // téléchargements simultanés en tâche de fond
+const pool = new Map();        // url -> <video>   (le plus récemment utilisé en dernier)
+let warmQueue = [], warmRunning = 0, warmStarted = false;
+
+function makePv() {
+  const v = document.createElement('video');
+  v.className = 'pv';
+  v.playsInline = true; v.controls = true; v.muted = true;
+  v.addEventListener('ended', onEnded);
+  v.addEventListener('timeupdate', () => { if (v === player) updateInfo(v); });
+  // Sécurité : un clip doit TOUJOURS démarrer à 0 s
+  const forceZero = () => {
+    if (v === player && v._fix && v.currentTime > 0.25) {
+      v._fix = false;
+      console.warn('Clip démarré à', v.currentTime.toFixed(1), 's → retour à 0 :', v._url);
+      try { v.currentTime = 0; } catch (e) {}
+    }
+  };
+  v.addEventListener('loadedmetadata', forceZero);
+  v.addEventListener('playing', () => { forceZero(); v._fix = false; });
+  document.body.insertBefore(v, document.getElementById('tvFrame'));
+  return v;
+}
+
+function attachSrc(v, url) {
+  if (window.Hls && Hls.isSupported() && url.includes('.m3u8')) {
+    v._hls = new Hls(); v._hls.loadSource(url); v._hls.attachMedia(v);
+  } else {
+    v.src = url;
+  }
+}
+
+function dropEl(url) {
+  const v = pool.get(url);
+  if (!v) return;
+  pool.delete(url);
+  if (v._hls) v._hls.destroy();
+  v.pause(); v.removeAttribute('src'); v.load(); v.remove();
+}
+
+/* Renvoie la <video> d'un clip (la crée et la charge si besoin) */
+function getEl(url, preload) {
+  let v = pool.get(url);
+  if (!v) {
+    v = makePv(); v._url = url;
+    v.preload = preload || 'auto';
+    attachSrc(v, url);
+  } else if (preload === 'auto' && v.preload !== 'auto') {
+    v.preload = 'auto';
+  }
+  pool.delete(url); pool.set(url, v);       // marque comme récemment utilisé
+  for (const u of pool.keys()) {            // fait de la place si trop de clips
+    if (pool.size <= PRELOAD_MAX) break;
+    if (pool.get(u) !== player && u !== url) dropEl(u);
+  }
+  return v;
+}
+
+/* Charge en entier le début d'un clip précis */
+function boost(url) {
+  if (url) getEl(url, 'auto');
+}
+
+/* Les 2 clips suivants sont toujours chargés à fond */
+function boostNext() {
+  if (playlist.length < 2) return;
+  for (let k = 1; k <= 2; k++) { const n = playlist[(currentIndex + k) % playlist.length]; if (n) boost(n.url); }
+}
+
+/* Tâche de fond : prépare tous les autres clips, les plus proches dans la liste d'abord */
+function warmAll() {
+  warmQueue = [];
+  for (let k = 1; k < playlist.length; k++) warmQueue.push(playlist[(currentIndex + k) % playlist.length].url);
+  pump();
+}
+function pump() {
+  while (warmRunning < PRELOAD_PARALLEL && warmQueue.length) {
+    const url = warmQueue.shift();
+    if (pool.has(url)) continue;
+    if (pool.size >= PRELOAD_MAX) { warmQueue = []; return; }
+    const full = pool.size < PRELOAD_FULL;
+    const v = getEl(url, full ? 'auto' : 'metadata');
+    warmRunning++;
+    let done = false;
+    const finish = () => { if (done) return; done = true; warmRunning--; pump(); };
+    v.addEventListener(full ? 'canplaythrough' : 'loadedmetadata', finish, { once: true });
+    v.addEventListener('error', finish, { once: true });
+    setTimeout(finish, 15000);
+  }
+}
+
+/* ── ENCADRÉS D'INFOS : item.infos = [{de, a, texte}] (secondes) ── */
+const infoBox = document.getElementById('infoBox');
+const infoText = document.getElementById('infoText');
+const titleBox = document.getElementById('titleBox');
+const TITLE_SHOW = { de: 3, a: 12 };   // affichage du titre (secondes) — modifiable par clip : "titreDe" / "titreA"
+function hideInfo() { infoBox.classList.remove('show'); infoBox._cur = null; }
+function updateInfo(v) {
+  const t = v.currentTime;
+  const it = v._item || {};
+  const td = it.titreDe ?? TITLE_SHOW.de, ta = it.titreA ?? TITLE_SHOW.a;
+  titleBox.classList.toggle('show', t >= td && t < ta);
+  const e = ((v._item && v._item.infos) || []).find(x => t >= x.de && t < x.a);
+  if (!e) { if (infoBox._cur) hideInfo(); return; }
+  if (infoBox._cur !== e) { infoBox._cur = e; infoText.textContent = e.texte; }
+  infoBox.classList.add('show');
+}
+
+/* ── GÉNÉRIQUE D'OUVERTURE : piloté par le temps de la vidéo (item.intro = true) ── */
+const introEl = document.getElementById('intro');
+const introGroup = document.getElementById('introGroup');
+const INTRO_END = 6000;   // ms
+function introChars(el, text) {
+  el.innerHTML = '';
+  return [...text].map(c => {
+    const sp = document.createElement('span');
+    sp.className = 'ch' + (c === ' ' ? ' sp' : '');
+    sp.innerHTML = c === ' ' ? '&nbsp;' : c;
+    el.appendChild(sp);
+    return sp;
+  });
+}
+const introMain = introChars(document.getElementById('introMain'), 'MICHAEL');
+const introSub  = introChars(document.getElementById('introSub'), 'LE MEILLEUR DE JACKSON');
+let introOn = false;
+function setCh(sp, t, revealAt, disAt, soft) {
+  const cls = t >= disAt ? (soft ? 'dis2' : 'dis') : (t >= revealAt ? 'rev' : '');
+  const want = 'ch' + (sp.classList.contains('sp') ? ' sp' : '') + (cls ? ' ' + cls : '');
+  if (sp.className !== want) sp.className = want;
+}
+function introFrame() {
+  if (!introOn) return;
+  const v = player;
+  const t = (v ? v.currentTime : 0) * 1000;
+  if (t >= INTRO_END) { stopIntro(); return; }
+  introMain.forEach((sp, i) =>
+    setCh(sp, t, i < 4 ? i * 45 : 180 + (i - 3) * 145, 4300 + i * 95, i > 2));
+  introSub.forEach((sp, j) =>
+    setCh(sp, t, 980 + j * 32, 4300 + 120 + j * 28, j >= 8));
+  introGroup.classList.toggle('up', t >= 980);
+  introGroup.classList.toggle('out', t >= 5400);
+  introEl.classList.toggle('reveal', t >= 4300);
+  requestAnimationFrame(introFrame);
+}
+function startIntro() {
+  introOn = true;
+  introEl.classList.remove('reveal'); introGroup.classList.remove('up', 'out');
+  [...introMain, ...introSub].forEach(sp => { sp.className = 'ch' + (sp.classList.contains('sp') ? ' sp' : ''); });
+  introEl.classList.add('on');
+  requestAnimationFrame(introFrame);
+}
+function stopIntro() { introOn = false; introEl.classList.remove('on'); }
+
+/* ── DÉMARRAGE AVEC SON : le navigateur exige un premier contact (clic / toucher) ── */
+const tapPrompt = document.getElementById('tapPrompt');
+function waitForTap(v) {
+  v.pause();
+  tapPrompt.classList.add('show');
+  const go = () => {
+    ['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.removeEventListener(ev, go, true));
+    tapPrompt.classList.remove('show');
+    if (v !== player) return;          // un autre clip a été lancé entre-temps
+    v.muted = false;
+    try { v.currentTime = 0; } catch (e) {}
+    v.play().catch(() => {});
+  };
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, go, true));
+  v._cancelTap = () => ['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.removeEventListener(ev, go, true));
+}
+
+function activate(v, item) {
+  const old = player;
+  if (old && old !== v) {
+    old.pause();
+    old.classList.remove('pv-active');
+    old.muted = true;
+    try { old.currentTime = 0; } catch (e) {}   // prêt à repartir du début s'il est rejoué
+  }
+  if (old && old._cancelTap) old._cancelTap();
+  tapPrompt.classList.remove('show');
+  player = v;
+  v._item = item;
+  hideInfo();
+  titleBox.classList.remove('show');
+  if (item.intro) startIntro(); else stopIntro();
+  document.getElementById('titleMain').textContent = item.titre.replace(/(^|\s)'/g, '$1‘').replace(/'/g, '’');
+  v._fix = true;
+  v.preload = 'auto';
+  v.muted = false;
+  try { v.currentTime = 0; } catch (e) {}
+  v.style.objectFit = item.dezoom ? 'contain' : 'cover';
+  v.classList.add('pv-active');
+  v.play().catch(() => waitForTap(v));   // son bloqué par le navigateur → on attend un premier contact
+}
+
+function loadVideo(index) {
+  if (index >= playlist.length) index = 0;
+  if (index < 0) index = playlist.length - 1;
+  currentIndex = index;
+  const item = playlist[currentIndex];
+  activate(getEl(item.url, 'auto'), item);
+  boostNext();
+  if (!warmStarted) {                     // on lance le préchargement général une fois le 1er clip démarré
+    warmStarted = true;
+    player.addEventListener('playing', () => setTimeout(warmAll, 1500), { once: true });
+  }
+}
+
+/* Appelé quand on survole / touche un résultat de recherche */
+function prefetchForSearch(item) {
+  if (item.url !== playlist[currentIndex]?.url) boost(item.url);
+}
+
+function onEnded(e) {
+  if (e.target !== player) return;
+  currentIndex++;
+  loadVideo(currentIndex);
+}
+
+/* ── DÉMARRAGE DIRECT ── */
+initPlaylist();
+
+/* ── MOTEUR DE RECHERCHE ── */
+(function(){
+  const input = document.getElementById('searchInput');
+  const results = document.getElementById('searchResults');
+
+  function renderResults(query) {
+    results.innerHTML = '';
+    
+    if (!query.trim()) {
+      const top7 = playlist;
+      const header = document.createElement('div');
+      header.style.fontSize = '12px';
+      header.style.color = 'rgba(255,255,255,0.4)';
+      header.style.padding = '8px 14px 4px 14px';
+      header.style.textTransform = 'uppercase';
+      header.style.letterSpacing = '1px';
+      header.textContent = 'Suggestions :';
+      results.appendChild(header);
+
+      top7.forEach(item => createResultItem(item));
+      results.style.display = 'block';
+      return;
+    }
+    
+    const matched = playlistSource.filter(item => item.url && (
+      item.titre.toLowerCase().includes(query.toLowerCase()) ||
+      item.artiste.toLowerCase().includes(query.toLowerCase()))
+    );
+
+    if (matched.length === 0) { results.style.display = 'none'; return; }
+
+    matched.forEach(item => createResultItem(item));
+    results.style.display = 'block';
+  }
+
+  function createResultItem(item) {
+    const div = document.createElement('div');
+    div.innerHTML = `${item.titre} <br><span>${item.artiste}</span>`;
+    ['mouseenter','touchstart','pointerdown'].forEach(ev =>
+      div.addEventListener(ev, () => prefetchForSearch(item), { passive: true }));
+    div.addEventListener('click', () => {
+      const foundIndex = playlist.findIndex(p => p.url === item.url);
+      if (foundIndex !== -1) {
+        loadVideo(foundIndex);
+      } else {
+        playlist.splice(currentIndex + 1, 0, item);
+        loadVideo(currentIndex + 1);
+      }
+      input.value = '';
+      results.style.display = 'none';
+    });
+    results.appendChild(div);
+  }
+
+  input.addEventListener('input', () => renderResults(input.value));
+  input.addEventListener('focus', () => { showControls(); renderResults(input.value); });
+  
+  document.addEventListener('click', e => {
+    if (!document.getElementById('searchWrapper').contains(e.target)) {
+      results.style.display = 'none';
+    }
+  });
+})();
+
+/* ── FULLSCREEN ── */
+document.getElementById('fullscreenBtn').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen();
+});
+
+/* ── CONTRÔLES AUTO-MASQUAGE ── */
+let hideControlsTimer = null;
+function showControls() {
+  document.body.classList.remove('controls-hidden');
+  clearTimeout(hideControlsTimer);
+  hideControlsTimer = setTimeout(() => document.body.classList.add('controls-hidden'), 3000);
+}
+document.addEventListener('mousemove', showControls);
+document.addEventListener('touchstart', showControls);
+
+/* ── TVFRAME + PLAYER RESIZE ── */
+function resizeTvFrame() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let fw, fh;
+  if (vw / vh > 16 / 9) {
+    fh = vh; fw = vh * 16 / 9;
+  } else {
+    fw = vw; fh = vw * 9 / 16;
+  }
+  const frame = document.getElementById('tvFrame');
+  frame.style.width  = fw + 'px';
+  frame.style.height = fh + 'px';
+  frame.style.setProperty('--u', (fw / 2080) + 'px');
+  document.querySelectorAll('.pv').forEach(el => {
+    el.style.width  = fw + 'px';
+    el.style.height = fh + 'px';
+  });
+}
+resizeTvFrame();
+window.addEventListener('resize', resizeTvFrame);
+window.addEventListener('orientationchange', () => setTimeout(resizeTvFrame, 100));
+
+</script>
+</body>
+</html>
